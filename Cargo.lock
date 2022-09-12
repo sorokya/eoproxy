@@ -351,6 +351,7 @@ dependencies = [
 [[package]]
 name = "eo"
 version = "0.0.3"
+source = "git+https://github.com/sorokya/eo#f713e048f5e543c4df7adb61597cb8cc7f5c79ef"
 dependencies = [
  "enum-primitive-derive",
  "log",
