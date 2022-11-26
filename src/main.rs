@@ -12,9 +12,9 @@ use eo::{
     data::{EOByte, EOShort, Serializeable, StreamReader, EOChar},
     net::{
         packets::{self, server::init::ReplyOk},
-        replies::InitReply,
-        Action, Family,
-    },
+        replies::{InitReply, WelcomeReply},
+        Action, Family, ItemMapInfo,
+    }, character::PaperdollIcon, world::{Coords, TinyCoords},
 };
 use lazy_static::lazy_static;
 
@@ -79,6 +79,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut client_queue: RefCell<VecDeque<PacketBuf>> = RefCell::new(VecDeque::new());
             let mut server_queue: RefCell<VecDeque<PacketBuf>> = RefCell::new(VecDeque::new());
             let mut player_id: EOShort = 0;
+            let mut character_name: Option<String> = None;
 
             let mut timestamp = Local::now();
 
@@ -127,30 +128,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if let Some(packet) = client_queue.get_mut().pop_front() {
                     let action = Action::from_u8(packet[0]).unwrap();
                     let family = Family::from_u8(packet[1]).unwrap();
+
+                    debug!("{}({}) From client: {:?}_{:?}\n{:?}\n", character_name.as_ref().unwrap_or(&String::new()), player_id, family, action, packet);
+
                     let reader = StreamReader::new(&packet[2..]);
                     let buf = reader.get_vec(reader.remaining());
                     reader.reset();
                     reader.seek(2);
 
-                    match family {
-                        Family::Init => match action {
-                            Action::Init => {
-                                let mut request = packets::client::init::Request::new();
-                                request.deserialize(&reader);
-                                debug!("{:?}", request);
-                            }
-                            _ => {}
-                        },
-                        Family::NpcMapInfo => match action {
-                            Action::Request => {
-                                let mut request = packets::client::npc_map_info::Request::new();
-                                request.deserialize(&reader);
-                                debug!("Requesting NPC Info\n{:?}", request);
-                            }
-                            _ => {}
-                        },
-                        _ => {}
-                    }
+                    // match family {
+                    //     Family::Init => match action {
+                    //         Action::Init => {
+                    //             let mut request = packets::client::init::Request::new();
+                    //             request.deserialize(&reader);
+                    //             debug!("{:?}", request);
+                    //         }
+                    //         _ => {}
+                    //     },
+                    //     Family::NpcMapInfo => match action {
+                    //         Action::Request => {
+                    //             let mut request = packets::client::npc_map_info::Request::new();
+                    //             request.deserialize(&reader);
+                    //             debug!("Requesting NPC Info\n{:?}", request);
+                    //         }
+                    //         _ => {}
+                    //     },
+                    //     _ => {}
+                    // }
 
                     server_bus.send(action, family, buf).await.unwrap();
                 }
@@ -161,10 +165,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if let Some(action) = action {
                         let family = Family::from_u8(packet[1]).unwrap();
 
-                        debug!("From server: {:?}_{:?}\n{:?}", family, action, packet);
+                        debug!("{}({}) From server: {:?}_{:?}\n{:?}\n", character_name.as_ref().unwrap_or(&String::new()), player_id, family, action, packet);
 
                         let reader = StreamReader::new(&packet[2..]);
-                        let buf = reader.get_vec(reader.remaining());
+                        let mut buf = reader.get_vec(reader.remaining());
                         reader.reset();
 
                         match family {
@@ -174,47 +178,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     reply.deserialize(&reader);
                                     debug!("{:?}", reply);
 
-                                    if reply.reply_code == InitReply::OK {
-                                        let reply_buf = reply.reply.serialize();
-                                        let mut reply_ok = packets::server::init::ReplyOk::new();
-                                        let ok_reader = StreamReader::new(&reply_buf);
-                                        reply_ok.deserialize(&ok_reader);
+                                    match reply.reply_code {
+                                        InitReply::OK => {
+                                            let reply_buf = reply.reply.serialize();
+                                            let mut reply_ok = packets::server::init::ReplyOk::new();
+                                            let ok_reader = StreamReader::new(&reply_buf);
+                                            reply_ok.deserialize(&ok_reader);
 
-                                        player_id = reply_ok.player_id;
-                                        server_bus.packet_processor.set_multiples(
-                                            reply_ok.encoding_multiples[0],
-                                            reply_ok.encoding_multiples[1],
-                                        );
-                                        client_bus.packet_processor.set_multiples(
-                                            reply_ok.encoding_multiples[1],
-                                            reply_ok.encoding_multiples[0],
-                                        );
+                                            player_id = reply_ok.player_id;
+                                            server_bus.packet_processor.set_multiples(
+                                                reply_ok.encoding_multiples[0],
+                                                reply_ok.encoding_multiples[1],
+                                            );
+                                            client_bus.packet_processor.set_multiples(
+                                                reply_ok.encoding_multiples[1],
+                                                reply_ok.encoding_multiples[0],
+                                            );
+                                        }
+                                        _ => {}
                                     }
                                 }
-                                _ => {}
-                            },
-                            Family::Npc => match action {
-                                Action::Player => {
-                                    let mut packet = packets::server::npc::Player::default();
-                                    packet.deserialize(&reader);
-                                    let now = Local::now();
-                                    let diff = now - timestamp;
-                                    // debug!(
-                                    //     "{}: NPC Moved (time since last movement {}ms)",
-                                    //     now.format("%M:%S.%f"),
-                                    //     diff.num_milliseconds()
-                                    // );
-                                    timestamp = now;
-
-                                    let chatting_npc_indexes: Vec<EOChar> = packet.chats.iter().map(|c| c.index).collect();
-                                    if chatting_npc_indexes.len() > 0 {
-                                        info!("Chatting NPCS:{:?}", chatting_npc_indexes);
-                                    }
-                                }
-                                Action::Spec => {
-                                    reader.seek(3);
-                                    let npc_index = reader.get_short();
-                                    info!("Killed NPC: {}", npc_index);
+                                Action::Request => {
+                                    // blah
                                 }
                                 _ => {}
                             },
@@ -222,10 +207,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 Action::Reply => {
                                     let mut reply = packets::server::map_info::Reply::new();
                                     reply.deserialize(&reader);
-                                    debug!("Received MapInfo:\n{:?}", reply);
+                                    reply.nearby.items.push(ItemMapInfo {
+                                        uid: 0, id: 1, coords: TinyCoords { x: 11, y: 8}, amount: 10000, 
+                                    });
+
+                                    debug!("Injecting gold! {:?}", reply);
+                                    buf = reply.serialize();
                                 }
                                 _ => {}
-                            },
+                            }
+                            Family::Welcome => match action {
+                                Action::Reply => {
+                                    let mut reply = packets::server::welcome::Reply::new();
+                                    reply.deserialize(&reader);
+
+                                    if let Some(select_character_reply) = reply.select_character {
+                                        character_name = Some(select_character_reply.name.to_string());
+                                    }
+                                }
+                                _ => {}
+                            }
                             _ => {}
                         }
 

@@ -9,6 +9,9 @@ pub struct Bus {
     pub packet_processor: PacketProcessor,
     timestamp: DateTime<Local>,
     name: String,
+    packet_length:  usize,
+    amount_read: usize,
+    buf: Option<Vec<u8>>,
 }
 
 impl Bus {
@@ -18,6 +21,9 @@ impl Bus {
             packet_processor: PacketProcessor::new(),
             timestamp: Local::now(),
             name,
+            packet_length: 0,
+            amount_read: 0,
+            buf: None,
         }
     }
 
@@ -95,13 +101,15 @@ impl Bus {
         match self.get_packet_length().await {
             Some(Ok(packet_length)) => {
                 if packet_length > 0 {
+                    self.packet_length = packet_length;
                     match self.read(packet_length).await {
-                        Some(Ok(buf)) => {
-                            let mut data_buf = buf;
+                        Some(Ok(_)) => {
+                            let mut data_buf = self.buf.as_ref().unwrap().clone();
                             self.packet_processor.decode(&mut data_buf);
 
                             self.timestamp = Local::now();
                             trace!("{} Receive: [{}] {:?}", self.name, self.timestamp.format("%M:%S.%f"), data_buf);
+                            self.buf = None;
                             Some(Ok(data_buf))
                         }
                         Some(Err(e)) => Some(Err(e)),
@@ -117,28 +125,54 @@ impl Bus {
     }
 
     async fn get_packet_length(&mut self) -> Option<std::io::Result<usize>> {
+        if self.packet_length > 0 {
+            return Some(Ok(self.packet_length));
+        }
+
         match self.read(2).await {
-            Some(Ok(buf)) => Some(Ok(eo::data::decode_number(&buf) as usize)),
+            Some(Ok(_)) => {
+                let buf = self.buf.as_ref().unwrap().clone();
+                self.buf = None;
+                Some(Ok(eo::data::decode_number(&buf) as usize))
+            },
             Some(Err(e)) => Some(Err(e)),
             None => None,
         }
     }
 
-    async fn read(&mut self, length: usize) -> Option<std::io::Result<Vec<EOByte>>> {
-        let mut buf: Vec<EOByte> = vec![0; length];
+    async fn read(&mut self, length: usize) -> Option<std::io::Result<()>> {
+        if self.buf.is_none() {
+            self.buf = Some(vec![0; length]);
+        }
+
         self.socket.readable().await.unwrap();
-        match self.socket.try_read(&mut buf) {
-            Ok(0) => {
-                return Some(Err(std::io::Error::new(
-                    std::io::ErrorKind::BrokenPipe,
-                    "Connection closed",
-                )));
-            }
-            Ok(_) => {}
-            Err(_) => {
-                return None;
+        if let Some(buf) = self.buf.as_mut() {
+            let mut recv_buf = vec![0; length - self.amount_read];
+
+            match self.socket.try_read(&mut recv_buf) {
+                Ok(0) => {
+                    return Some(Err(std::io::Error::new(
+                        std::io::ErrorKind::BrokenPipe,
+                        "Connection closed",
+                    )));
+                }
+                Ok(bytes_read) => {
+                    buf.splice(self.amount_read..self.amount_read + bytes_read, recv_buf);
+
+                    self.amount_read += bytes_read;
+
+                    if self.amount_read == length {
+                        self.amount_read = 0;
+                        self.packet_length = 0;
+                        return Some(Ok(()));
+                    }
+                }
+                Err(_) => {
+                    return None;
+                }
             }
         }
-        Some(Ok(buf))
+        
+        None
     }
 }
