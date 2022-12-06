@@ -9,30 +9,27 @@ use std::{cell::RefCell, collections::VecDeque};
 
 use chrono::Local;
 use eo::{
-    character::PaperdollIcon,
-    data::{EOByte, EOChar, EOShort, Serializeable, StreamReader},
-    net::{
-        packets::{self, server::init::ReplyOk},
-        replies::{InitReply, WelcomeReply},
-        Action, Family, ItemMapInfo,
+    data::{EOByte, EOShort, Serializeable, StreamReader},
+    protocol::{
+        server::{
+            init::{Init, InitData},
+            welcome,
+        },
+        PacketAction, PacketFamily,
     },
-    world::{Coords, TinyCoords},
 };
 use lazy_static::lazy_static;
 
 pub type PacketBuf = Vec<EOByte>;
 
 mod settings;
-use num_traits::FromPrimitive;
-use serde::{Deserialize, Serialize};
+use futures_util::SinkExt;
 use settings::Settings;
 use tokio::{
-    io::AsyncWriteExt,
     net::{TcpListener, TcpStream},
-    sync::{mpsc, broadcast},
+    sync::broadcast,
 };
 use tokio_tungstenite::{accept_async, tungstenite::protocol::Message};
-use futures_util::{StreamExt, SinkExt};
 
 // mod player;
 // use player::Player;
@@ -46,14 +43,14 @@ lazy_static! {
 
 #[derive(Debug, Clone, serde_derive::Serialize)]
 enum WSMessage {
-  AddPlayer,
-  RemovePlayer(u32),
-  SetPlayerId(u32),
-  Packet {
-    player_id: u32,
-    from: String,
-    buf: Vec<u8>,
-  }
+    AddPlayer,
+    RemovePlayer(u32),
+    SetPlayerId(u32),
+    Packet {
+        player_id: u32,
+        from: String,
+        buf: Vec<u8>,
+    },
 }
 
 #[tokio::main]
@@ -66,12 +63,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     pretty_env_logger::init();
     println!(
-        "'||''''|   ..|''||   '||''|.                                   
-||  .    .|'    ||   ||   || ... ..    ...   ... ... .... ... 
-||''|    ||      ||  ||...|'  ||' '' .|  '|.  '|..'   '|.  |  
-||       '|.     ||  ||       ||     ||   ||   .|.     '|.|   
-.||.....|  ''|...|'  .||.     .||.     '|..|' .|  ||.    '|    
-                                                       .. |     
+        "'||''''|   ..|''||   '||''|.
+||  .    .|'    ||   ||   || ... ..    ...   ... ... .... ...
+||''|    ||      ||  ||...|'  ||' '' .|  '|.  '|..'   '|.  |
+||       '|.     ||  ||       ||     ||   ||   .|.     '|.|
+.||.....|  ''|...|'  .||.     .||.     '|..|' .|  ||.    '|
+                                                       .. |
                                                         ''      \nThe rusty endless online proxy: v{}\n",
         VERSION
     );
@@ -135,7 +132,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut player_id: EOShort = 0;
             let mut character_name: Option<String> = None;
 
-            let mut timestamp = Local::now();
+            let _timestamp = Local::now();
 
             tx.send(WSMessage::AddPlayer).unwrap();
 
@@ -192,8 +189,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         buf: packet.clone(),
                     })
                     .unwrap();
-                    let action = Action::from_u8(packet[0]).unwrap();
-                    let family = Family::from_u8(packet[1]).unwrap();
+                    let action = PacketAction::from_byte(packet[0]).unwrap();
+                    let family = PacketFamily::from_byte(packet[1]).unwrap();
 
                     debug!(
                         "{}({}) From client: {:?}_{:?}\n{:?}\n",
@@ -218,10 +215,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         buf: packet.clone(),
                     })
                     .unwrap();
-                    let action = Action::from_u8(packet[0]);
-
+                    let action = PacketAction::from_byte(packet[0]);
                     if let Some(action) = action {
-                        let family = Family::from_u8(packet[1]).unwrap();
+                        let family = PacketFamily::from_byte(packet[1]).unwrap();
 
                         debug!(
                             "{}({}) From server: {:?}_{:?}\n{:?}\n",
@@ -233,69 +229,49 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         );
 
                         let reader = StreamReader::new(&packet[2..]);
-                        let mut buf = reader.get_vec(reader.remaining());
+                        let buf = reader.get_vec(reader.remaining());
                         reader.reset();
 
                         match family {
-                            Family::Init => match action {
-                                Action::Init => {
-                                    let mut reply = packets::server::init::Reply::new();
+                            PacketFamily::Init => match action {
+                                PacketAction::Init => {
+                                    let mut reply = Init::new();
                                     reply.deserialize(&reader);
                                     debug!("{:?}", reply);
 
-                                    match reply.reply_code {
-                                        InitReply::OK => {
-                                            let reply_buf = reply.reply.serialize();
-                                            let mut reply_ok =
-                                                packets::server::init::ReplyOk::new();
-                                            let ok_reader = StreamReader::new(&reply_buf);
-                                            reply_ok.deserialize(&ok_reader);
-
+                                    match reply.data {
+                                        InitData::Ok(reply_ok) => {
                                             player_id = reply_ok.player_id;
 
                                             tx.send(WSMessage::SetPlayerId(player_id.into()));
 
                                             server_bus.packet_processor.set_multiples(
-                                                reply_ok.encoding_multiples[0],
-                                                reply_ok.encoding_multiples[1],
+                                                reply_ok.encode_multiple,
+                                                reply_ok.decode_multiple,
                                             );
                                             client_bus.packet_processor.set_multiples(
-                                                reply_ok.encoding_multiples[1],
-                                                reply_ok.encoding_multiples[0],
+                                                reply_ok.decode_multiple,
+                                                reply_ok.encode_multiple,
                                             );
                                         }
                                         _ => {}
                                     }
                                 }
-                                Action::Request => {
-                                    // blah
-                                }
                                 _ => {}
                             },
-                            Family::MapInfo => match action {
-                                Action::Reply => {
-                                    let mut reply = packets::server::map_info::Reply::new();
-                                    reply.deserialize(&reader);
-                                    reply.nearby.items.push(ItemMapInfo {
-                                        uid: 0,
-                                        id: 1,
-                                        coords: TinyCoords { x: 11, y: 8 },
-                                        amount: 10000,
-                                    });
-
-                                    debug!("Injecting gold! {:?}", reply);
-                                    buf = reply.serialize();
-                                }
-                                _ => {}
-                            },
-                            Family::Welcome => match action {
-                                Action::Reply => {
-                                    let mut reply = packets::server::welcome::Reply::new();
+                            PacketFamily::Welcome => match action {
+                                PacketAction::Reply => {
+                                    let mut reply = welcome::Reply::new();
                                     reply.deserialize(&reader);
 
-                                    if let Some(select_character_reply) = reply.select_character {
-                                        character_name =
-                                            Some(select_character_reply.name.to_string());
+                                    match reply.data {
+                                        welcome::ReplyData::SelectCharacter(
+                                            reply_select_character,
+                                        ) => {
+                                            character_name =
+                                                Some(reply_select_character.name.to_string());
+                                        }
+                                        _ => {}
                                     }
                                 }
                                 _ => {}

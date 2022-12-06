@@ -1,6 +1,13 @@
-use chrono::{DateTime, Utc, Local};
-use eo::{net::{PacketProcessor, Action, Family, PACKET_HEADER_SIZE, PACKET_LENGTH_SIZE}, data::{StreamBuilder, EOByte, encode_number}};
+use chrono::{DateTime, Local};
+use eo::{
+    data::{encode_number, EOByte, StreamBuilder},
+    net::PacketProcessor,
+    protocol::{PacketAction, PacketFamily},
+};
 use tokio::net::TcpStream;
+
+const PACKET_HEADER_SIZE: usize = 2;
+const PACKET_LENGTH_SIZE: usize = 2;
 
 use crate::PacketBuf;
 
@@ -9,7 +16,7 @@ pub struct Bus {
     pub packet_processor: PacketProcessor,
     timestamp: DateTime<Local>,
     name: String,
-    packet_length:  usize,
+    packet_length: usize,
     amount_read: usize,
     buf: Option<Vec<u8>>,
 }
@@ -27,14 +34,16 @@ impl Bus {
         }
     }
 
-    pub async fn send_raw(
-        &mut self,
-        mut data: PacketBuf,
-    ) -> std::io::Result<()> {
+    pub async fn send_raw(&mut self, mut data: PacketBuf) -> std::io::Result<()> {
         let packet_size = data.len();
 
         self.timestamp = Local::now();
-        trace!("{} Send: [{}] {:?}", self.name, self.timestamp.format("%M:%S.%f"), data);
+        trace!(
+            "{} Send: [{}] {:?}",
+            self.name,
+            self.timestamp.format("%M:%S.%f"),
+            data
+        );
 
         let length_bytes = encode_number(packet_size as u32);
         data.insert(0, length_bytes[1]);
@@ -59,8 +68,8 @@ impl Bus {
 
     pub async fn send(
         &mut self,
-        action: Action,
-        family: Family,
+        action: PacketAction,
+        family: PacketFamily,
         mut data: PacketBuf,
     ) -> std::io::Result<()> {
         let packet_size = PACKET_HEADER_SIZE + data.len();
@@ -70,10 +79,14 @@ impl Bus {
         builder.add_byte(family as EOByte);
         builder.append(&mut data);
 
-
         let mut buf = builder.get();
         self.timestamp = Local::now();
-        trace!("{} Send: [{}] {:?}", self.name, self.timestamp.format("%M:%S.%f"), buf);
+        trace!(
+            "{} Send: [{}] {:?}",
+            self.name,
+            self.timestamp.format("%M:%S.%f"),
+            buf
+        );
         self.packet_processor.encode(&mut buf);
 
         let length_bytes = encode_number(packet_size as u32);
@@ -108,7 +121,12 @@ impl Bus {
                             self.packet_processor.decode(&mut data_buf);
 
                             self.timestamp = Local::now();
-                            trace!("{} Receive: [{}] {:?}", self.name, self.timestamp.format("%M:%S.%f"), data_buf);
+                            trace!(
+                                "{} Receive: [{}] {:?}",
+                                self.name,
+                                self.timestamp.format("%M:%S.%f"),
+                                data_buf
+                            );
                             self.buf = None;
                             Some(Ok(data_buf))
                         }
@@ -134,7 +152,7 @@ impl Bus {
                 let buf = self.buf.as_ref().unwrap().clone();
                 self.buf = None;
                 Some(Ok(eo::data::decode_number(&buf) as usize))
-            },
+            }
             Some(Err(e)) => Some(Err(e)),
             None => None,
         }
@@ -172,7 +190,7 @@ impl Bus {
                 }
             }
         }
-        
+
         None
     }
 }
