@@ -1,6 +1,6 @@
 [server]
-host = "192.168.1.125"
-port = "8078"
+host = "moffat.io"
+port = "8079"
 
 [proxy]
 host = "0.0.0.0"

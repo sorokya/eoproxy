@@ -1,0 +1,67 @@
+.packet {
+  padding: 20px 5px 5px 5px;
+  position: relative;
+  border: 1px solid;
+  border-radius: 5px;
+  margin: 10px 0;
+  width: 400px;
+}
+
+.id {
+  position: absolute;
+  left: 1px;
+  top: 1px;
+  display: inline-block;
+  border-top-left-radius: 5px;
+  border-bottom-right-radius: 5px;
+  padding: 0 10px;
+}
+
+.data {
+  max-width: 90%;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.header {
+  position: absolute;
+  width: 100%;
+  left: -1px;
+  top: -1px;
+  font-size: .8em;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  text-transform: uppercase;
+  font-weight: bold;
+  height: 35px;
+}
+
+.from {
+  position: absolute;
+  right: -1px;
+  top: 0;
+  border-top-right-radius: 5px;
+  border-bottom-left-radius: 5px;
+  display: inline-block;
+  padding: 0 10px;
+}
+
+.packet[data-from="Client"] .from,
+.packet[data-from="Client"] .id {
+  background: #2E4A4D;
+}
+
+.packet[data-from="Client"] {
+  background: #1B2B2C;
+  border-color: #2E4A4D;
+}
+
+.packet[data-from="Server"] .from,
+.packet[data-from="Server"] .id {
+  background: #2E374D;
+}
+
+.packet[data-from="Server"] {
+  background: #1B272C;
+  border-color: #2E374D;
+}
