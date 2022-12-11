@@ -21,9 +21,10 @@ export default function PacketList({ packets }) {
           {packets
             .slice(0)
             .reverse()
+            .slice(0, 20)
             .map((packet, i) => (
               <li key={i}>
-                <Packet packet={packet} view="raw" />
+                <Packet packet={packet} />
               </li>
             ))}
         </ul>

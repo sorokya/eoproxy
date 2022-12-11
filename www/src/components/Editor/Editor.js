@@ -1,24 +1,37 @@
-import React, { useState } from 'react';
-import CodeEditor from '@uiw/react-textarea-code-editor';
+import React, { useState, useEffect, useCallback } from 'react';
+import MonacoEditor from '@monaco-editor/react';
 import './Editor.css';
+import { useProtocol, useReloadModule } from '../../ProtocolProvider';
+import useDebounce from '../../hooks/useDebounce';
+
+const darkThemeMq = window.matchMedia('(prefers-color-scheme: dark)');
 
 export default function Editor() {
+  const { protocol, loading } = useProtocol();
+  const reloadModule = useReloadModule();
   const [code, setCode] = useState('');
+
+  const update = useCallback((value) => {
+    setCode(value);
+    reloadModule(value);
+  });
+
+  useEffect(() => {
+    reloadModule(protocol);
+  }, []);
+
+  useEffect(() => {
+    setCode(loading ? 'Loading...' : protocol);
+  }, [loading]);
+
   return (
     <div className="editor">
-      <CodeEditor
-        value={code}
-        language="eo_protocol"
-        placeholder="Please enter protocol code"
-        onChange={(evn) => setCode(evn.target.value)}
-        padding={15}
-        style={{
-          fontSize: 12,
-          backgroundColor: '#1B272C',
-          height: '100%',
-          fontFamily:
-            'ui-monospace,SFMono-Regular,SF Mono,Consolas,Liberation Mono,Menlo,monospace'
-        }}
+      <MonacoEditor
+        height="100%"
+        language="plaintext"
+        defaultValue={code}
+        theme={darkThemeMq.matches ? 'vs-dark' : 'vs-light'}
+        onChange={useDebounce(update, 1000)}
       />
     </div>
   );

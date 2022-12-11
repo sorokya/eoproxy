@@ -65,3 +65,10 @@
   background: #1B272C;
   border-color: #2E374D;
 }
+
+.packet img {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width:16px;
+}

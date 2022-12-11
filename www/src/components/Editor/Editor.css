@@ -1,6 +1,8 @@
 .editor {
   right: 0;
   position: fixed;
-  width: 600px;
-  height: 95vh;
+  width: 900px;
+  height: 90vh;
+  overflow-y:hidden;
+  border:1px solid #000;
 }

@@ -145,7 +145,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         Some(Err(e)) => {
                             match e.kind() {
                                 std::io::ErrorKind::BrokenPipe => {
-                                    info!("Closed by peer");
+                                    info!("Client Closed by peer");
                                     tx.send(WSMessage::RemovePlayer(player_id.into())).unwrap();
                                     break;
                                 },
@@ -166,7 +166,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         Some(Err(e)) => {
                             match e.kind() {
                                 std::io::ErrorKind::BrokenPipe => {
-                                    info!("Closed by peer");
+                                    info!("Server Closed by peer");
                                     tx.send(WSMessage::RemovePlayer(player_id.into())).unwrap();
                                     break;
                                 },
@@ -205,6 +205,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let buf = reader.get_vec(reader.remaining());
                     reader.reset();
                     reader.seek(2);
+
                     server_bus.send(action, family, buf).await.unwrap();
                 }
 
@@ -215,6 +216,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         buf: packet.clone(),
                     })
                     .unwrap();
+
                     let action = PacketAction::from_byte(packet[0]);
                     if let Some(action) = action {
                         let family = PacketFamily::from_byte(packet[1]).unwrap();
@@ -243,7 +245,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         InitData::Ok(reply_ok) => {
                                             player_id = reply_ok.player_id;
 
-                                            tx.send(WSMessage::SetPlayerId(player_id.into()));
+                                            let _ = tx.send(WSMessage::SetPlayerId(player_id.into()));
 
                                             server_bus.packet_processor.set_multiples(
                                                 reply_ok.encode_multiple,
@@ -260,20 +262,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 _ => {}
                             },
                             PacketFamily::Welcome => match action {
-                                PacketAction::Reply => {
-                                    let mut reply = welcome::Reply::new();
-                                    reply.deserialize(&reader);
+                                // PacketAction::Reply => {
+                                //     let mut reply = welcome::Reply::new();
+                                //     reply.deserialize(&reader);
 
-                                    match reply.data {
-                                        welcome::ReplyData::SelectCharacter(
-                                            reply_select_character,
-                                        ) => {
-                                            character_name =
-                                                Some(reply_select_character.name.to_string());
-                                        }
-                                        _ => {}
-                                    }
-                                }
+                                //     match reply.data {
+                                //         welcome::ReplyData::SelectCharacter(
+                                //             reply_select_character,
+                                //         ) => {
+                                //             character_name =
+                                //                 Some(reply_select_character.name.to_string());
+                                //         }
+                                //         _ => {}
+                                //     }
+                                // }
                                 _ => {}
                             },
                             _ => {}

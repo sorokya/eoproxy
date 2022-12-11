@@ -75,13 +75,13 @@ impl Bus {
         let packet_size = PACKET_HEADER_SIZE + data.len();
         let mut builder = StreamBuilder::with_capacity(PACKET_LENGTH_SIZE + packet_size);
 
-        builder.add_byte(action as EOByte);
-        builder.add_byte(family as EOByte);
+        builder.add_byte(action.to_byte());
+        builder.add_byte(family.to_byte());
         builder.append(&mut data);
 
         let mut buf = builder.get();
         self.timestamp = Local::now();
-        trace!(
+        debug!(
             "{} Send: [{}] {:?}",
             self.name,
             self.timestamp.format("%M:%S.%f"),
@@ -118,10 +118,12 @@ impl Bus {
                     match self.read(packet_length).await {
                         Some(Ok(_)) => {
                             let mut data_buf = self.buf.as_ref().unwrap().clone();
+
+                            debug!("{} Receive Raw: [{}] {:?}", self.name, self.timestamp.format("%M:%S.%f"), data_buf);
                             self.packet_processor.decode(&mut data_buf);
 
                             self.timestamp = Local::now();
-                            trace!(
+                            debug!(
                                 "{} Receive: [{}] {:?}",
                                 self.name,
                                 self.timestamp.format("%M:%S.%f"),

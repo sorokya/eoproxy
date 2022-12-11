@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React from 'react';
 import PropTypes from 'prop-types';
 import './Client.css';
 import PacketList from './PacketList';
-import PacketInspector from './PacketInspector';
+// import PacketInspector from './PacketInspector';
 import { usePackets } from '../../ProxyProvider';
 
 Client.propTypes = {
@@ -12,16 +12,16 @@ Client.propTypes = {
 export default function Client({ playerId }) {
   const packets = usePackets(playerId);
 
-  const [selectedPacketIndex] = useState(0);
+  // const [selectedPacketIndex] = useState(0);
 
   return (
     <section className="client">
       <PacketList packets={packets} />
-      <PacketInspector
+      {/* <PacketInspector
         packet={
           selectedPacketIndex > -1 ? packets[selectedPacketIndex] : undefined
         }
-      />
+      /> */}
     </section>
   );
 }
